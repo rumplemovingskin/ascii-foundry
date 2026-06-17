@@ -28,8 +28,6 @@ Use YouTube URL support only for videos you have rights or permission to process
 
 ## Build The Portable App Yourself
 
-These steps are for the person making a release build.
-
 Requirements:
 
 - Windows 10 or newer
