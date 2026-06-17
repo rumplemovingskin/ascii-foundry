@@ -1,146 +1,78 @@
 # ASCII Foundry
 
-ASCII Foundry is a desktop app and reusable Python engine for converting images,
-image batches, and videos into ASCII-art outputs.
+ASCII Foundry turns images, videos, and YouTube sources into crisp ASCII art.
+It is built for people who want a visual tool first: open a source, tune the
+look, preview the result, and export it in the format they need.
 
-The first build focuses on a dependable still-image workflow:
+Use it for stylized posters, terminal-inspired art, social clips, retro video
+effects, print textures, stream graphics, and weird little experiments that
+look better once they have been fed through a wall of characters.
 
-- open an image in the PySide6 desktop app
-- preview scaled rendered ASCII art
-- preview a scaled rendered ASCII image without scrolling
-- adjust width, character ramp, font, font weight, line height, spacing, invert,
-  brightness, contrast, and gamma
-- export plain `.txt`
-- export rendered `.png`, `.jpg`, `.webp`, or `.bmp`
-- choose fixed image/video output resolutions, including 4K UHD for video
-- save custom ASCII and export presets
-- preview a random or seeded sample frame from a selected video
+## What It Does
 
-The project also includes a reusable core package, a small CLI, tests, and
-FFmpeg-backed video helpers for frame extraction and MP4 reconstruction.
+- Converts still images into ASCII text or rendered image files.
+- Converts videos into ASCII videos, including MP4, WebM, and GIF exports.
+- Accepts local image/video files and YouTube URLs as video sources.
+- Shows a live preview while you adjust the output.
+- Includes built-in ASCII looks, character ramps, fonts, colors, and export presets.
+- Lets you save your own ASCII and export presets.
+- Supports preprocessing controls such as brightness, contrast, gamma, edge finding,
+  sharpen, blur, posterize, and threshold.
+- Exports text, HTML, PNG, JPG, WebP, BMP, MP4, WebM, and GIF.
+- Supports high-resolution rendered outputs, including 4K video.
 
-## Install The App On Windows
+## Screenshots
 
-For normal users, download `ASCII-Foundry-Portable-Windows-x64.zip`, extract it,
-and double-click `ASCII Foundry.exe`.
+Screenshots will go here.
+
+## Why Use It
+
+ASCII Foundry is meant to feel like a small creative workstation rather than a
+command-line trick. The app keeps the source preview, generated preview, and
+export controls close together so you can experiment quickly and settle on a
+look before committing to a render.
+
+The same settings can be reused across still images and videos, which makes it
+easy to build a consistent style instead of starting from scratch every time.
+
+## Video And YouTube
+
+Video export uses FFmpeg under the hood. The Windows portable build can include
+FFmpeg and FFprobe, so normal users do not need to install them separately.
+
+YouTube URL support uses `yt-dlp`. Use it only for videos you have rights or
+permission to process.
+
+## Download And Run On Windows
+
+The easiest way to use ASCII Foundry is the portable Windows build.
+
+1. Download `ASCII-Foundry-Portable-Windows-x64.zip` from the latest release.
+2. Extract the zip.
+3. Open the extracted folder.
+4. Double-click `ASCII Foundry.exe`.
 
 No Git, Python, pip, or terminal setup is required for the portable release.
-See [docs/INSTALL_WINDOWS.md](docs/INSTALL_WINDOWS.md) for the end-user steps,
-video dependency notes, and release build instructions.
 
-## Requirements
+Windows SmartScreen may warn about unsigned apps. If you trust the source of the
+download, choose **More info** and then **Run anyway**.
 
-The portable Windows release bundles the Python dependencies. When built with
-the included release script, it also bundles FFmpeg and FFprobe for video work.
+More detailed Windows notes are in [docs/INSTALL_WINDOWS.md](docs/INSTALL_WINDOWS.md).
 
-Source/development requirements:
+## Build From Source
 
-- Python 3.10+
-- Pillow
-- NumPy
-- PySide6 for the desktop GUI
-- yt-dlp for YouTube URL sources
-- pytest for tests
-- FFmpeg and FFprobe on `PATH` for video workflows
+Developers can run the app from source with Python 3.10 or newer:
 
-Image conversion works without FFmpeg. Video commands fail gracefully when FFmpeg
-is missing.
-
-## Install For Development
-
-```bash
+```powershell
 python -m venv .venv
-.venv\Scripts\activate
+.\.venv\Scripts\activate
 python -m pip install -e ".[dev,gui,video]"
-```
-
-If you only need the core and CLI:
-
-```bash
-python -m pip install -e .
-```
-
-## Run The App
-
-```bash
-ascii-foundry
-```
-
-or:
-
-```bash
 python -m ascii_foundry
 ```
 
-## CLI Examples
-
-Export plain text:
-
-```bash
-ascii-foundry image input.jpg --out output.txt --text --width 100
-```
-
-Export a rendered PNG:
-
-```bash
-ascii-foundry image input.jpg --out output.png --width 120 --preset "Classic Terminal"
-```
-
-Batch convert a folder:
-
-```bash
-ascii-foundry batch ./input_images --out ./ascii_output --format png --preset "Block Shade"
-```
-
-Run an FFmpeg-powered video conversion:
-
-```bash
-ascii-foundry video input.mp4 --out output.mp4 --width 140 --fps 30
-```
-
-Pick a container/codec and bitrate:
-
-```bash
-ascii-foundry video input.mp4 --out output --format webm --codec libvpx-vp9 --mbps 6 --width 140
-ascii-foundry video input.mp4 --out output --format gif --fps 12 --width 100 --no-audio
-ascii-foundry video input.mp4 --out output.mp4 --output-width 3840 --output-height 2160
-```
-
-## FFmpeg
-
-Video conversion needs both `ffmpeg` and `ffprobe`. The portable Windows release
-can bundle both tools. When running from source, install them separately and make
-sure both commands are available on your `PATH`.
-
-Useful checks:
-
-```bash
-ffmpeg -version
-ffprobe -version
-```
-
-ASCII Foundry uses FFmpeg to extract image frames, converts each extracted frame
-through the same core image renderer, and then asks FFmpeg to rebuild those
-rendered frames into a video.
-
-When **Keep intermediate frames** is enabled, extracted source frames and rendered
-ASCII frames are cached and reused for matching future exports of the same video
-and settings.
-
-## Known Limitations
-
-- The GUI implements still-image preview/export and video preview/export.
-- Batch and video workflows are available through the CLI/core pipeline.
-- The GUI supports grouped text, image, and video export controls and previews
-  rendered video frames as they are created.
-- Advanced image effects are intentionally lightweight and tuned for fast ASCII
-  previews rather than full photo-editing control.
-
-## Development
-
 Run tests:
 
-```bash
+```powershell
 pytest
 ```
 
@@ -151,14 +83,18 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\build_windows.ps1
 ```
 
-Project layout:
+The build script creates a standalone app folder and a portable zip under
+`release/`.
 
-```text
-src/ascii_foundry/
-  core/       reusable conversion engine and video helpers
-  gui/        PySide6 desktop UI
-  cli/        command-line interface
-  utils/      paths and logging helpers
-tests/        focused core tests
-docs/         user-facing notes
+## Command Line
+
+ASCII Foundry also includes a CLI for scripting and batch work:
+
+```powershell
+ascii-foundry image input.jpg --out output.png --width 120 --preset "Classic Terminal"
+ascii-foundry batch .\images --out .\ascii-output --format png
+ascii-foundry video input.mp4 --out output.mp4 --width 140 --fps 30
 ```
+
+Most users should start with the desktop app. The CLI is there when automation
+is useful.
