@@ -55,15 +55,12 @@ permission to process.
 
 The easiest way to use ASCII Foundry is the portable Windows build.
 
-1. Download `ASCII-Foundry-Portable-Windows-x64.zip` from the latest release.
+1. Download [ASCII-Foundry-Portable-Windows-x64.zip](https://github.com/rumplemovingskin/ascii-foundry/releases/download/v0.1.0/ASCII-Foundry-Portable-Windows-x64.zip) from the latest release.
 2. Extract the zip.
 3. Open the extracted folder.
 4. Double-click `ASCII Foundry.exe`.
 
-No Git, Python, pip, or terminal setup is required for the portable release.
-
-Windows SmartScreen may warn about unsigned apps. If you trust the source of the
-download, choose **More info** and then **Run anyway**.
+Windows SmartScreen may warn about unsigned apps. Choose **More info** and then **Run anyway**.
 
 More detailed Windows notes are in [docs/INSTALL_WINDOWS.md](docs/INSTALL_WINDOWS.md).
 
