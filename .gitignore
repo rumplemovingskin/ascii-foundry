@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+release/
+vendor/ffmpeg/
+*.egg-info/
+
+# Local media/test outputs
+exports/
+output/
+ascii_output/
+temp_frames/
+ascii_frames/
+*.log
