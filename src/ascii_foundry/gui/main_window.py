@@ -166,7 +166,34 @@ class SliderSpinBox(QWidget):
         self.slider.setRange(minimum, maximum)
         self.spin = QSpinBox()
         self.spin.setRange(minimum, maximum)
-        self.spin.setFixedWidth(76)
+        self.spin.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.spin.setFixedSize(88, 24)
+        self.spin.setStyleSheet(
+            """
+            QSpinBox {
+                padding-right: 18px;
+            }
+            QSpinBox::up-button {
+                subcontrol-origin: border;
+                subcontrol-position: top right;
+                width: 18px;
+                height: 11px;
+                border-left: 1px solid #454545;
+                border-bottom: 1px solid #454545;
+            }
+            QSpinBox::down-button {
+                subcontrol-origin: border;
+                subcontrol-position: bottom right;
+                width: 18px;
+                height: 11px;
+                border-left: 1px solid #454545;
+            }
+            QSpinBox::up-arrow, QSpinBox::down-arrow {
+                width: 7px;
+                height: 5px;
+            }
+            """
+        )
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.slider, stretch=1)
