@@ -27,6 +27,9 @@ look better once they have been fed through a wall of characters.
 <img width="1920" height="1032" alt="matrix" src="https://github.com/user-attachments/assets/8cf736cf-793e-41b4-8f6c-0f11ae3c1c5f" />
 <img width="1920" height="1032" alt="spiderman" src="https://github.com/user-attachments/assets/09c3e23a-0989-4194-ac78-44d75d5cc184" />
 
+https://github.com/user-attachments/assets/3dc2e89a-010f-413d-bf41-7657d0c1c66d
+
+https://github.com/user-attachments/assets/e9e6fba2-c4ed-49d4-b6c0-b3c3ee371688
 
 
 
