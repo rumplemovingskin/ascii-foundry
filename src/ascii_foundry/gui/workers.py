@@ -72,7 +72,7 @@ class SampleFrameWorker(QRunnable):
         render_settings: RenderSettings,
         image_settings: ImageExportSettings,
         random_frame: bool,
-        seed: int | None,
+        frame_number: int | None,
     ) -> None:
         super().__init__()
         self.input_video = input_video
@@ -80,7 +80,7 @@ class SampleFrameWorker(QRunnable):
         self.render_settings = render_settings
         self.image_settings = image_settings
         self.random_frame = random_frame
-        self.seed = seed
+        self.frame_number = frame_number
         self.signals = WorkerSignals()
 
     @Slot()
@@ -91,7 +91,7 @@ class SampleFrameWorker(QRunnable):
                 self.input_video,
                 workdir / "source_sample.png",
                 random_frame=self.random_frame,
-                seed=self.seed,
+                frame_number=self.frame_number,
                 progress_callback=self.signals.progress.emit,
             )
             preview_frame = workdir / "ascii_sample.png"

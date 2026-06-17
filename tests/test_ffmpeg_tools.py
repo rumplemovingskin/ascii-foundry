@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from ascii_foundry.core.ffmpeg_tools import find_ffmpeg
 from ascii_foundry.core.settings import VideoSettings
-from ascii_foundry.core.video_pipeline import _parse_fps, choose_sample_timestamp, rebuild_video
+from ascii_foundry.core.video_pipeline import (
+    _parse_fps,
+    choose_sample_frame_number,
+    choose_sample_timestamp,
+    mux_audio_if_possible,
+    rebuild_video,
+    video_frame_count,
+)
 
 
 def test_parse_fps() -> None:
@@ -29,6 +36,48 @@ def test_choose_sample_timestamp_defaults_to_middle(monkeypatch) -> None:
     monkeypatch.setattr("ascii_foundry.core.video_pipeline.video_duration_seconds", lambda path, ffprobe_path=None: 10.0)
 
     assert choose_sample_timestamp("input.mp4", random_frame=False, seed=None) == 5.0
+
+
+def test_choose_sample_frame_number_defaults_to_first_frame(monkeypatch) -> None:
+    monkeypatch.setattr("ascii_foundry.core.video_pipeline.video_frame_count", lambda path, ffprobe_path=None: 42)
+
+    assert choose_sample_frame_number("input.mp4", random_frame=False, frame_number=None) == (1, 42)
+
+
+def test_choose_sample_frame_number_reports_total_when_too_high(monkeypatch) -> None:
+    monkeypatch.setattr("ascii_foundry.core.video_pipeline.video_frame_count", lambda path, ffprobe_path=None: 42)
+
+    try:
+        choose_sample_frame_number("input.mp4", random_frame=False, frame_number=99)
+    except ValueError as exc:
+        assert "Frame 99" in str(exc)
+        assert "Total frames: 42" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError")
+
+
+def test_video_frame_count_uses_nb_frames(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "ascii_foundry.core.video_pipeline.ffprobe_metadata",
+        lambda path, ffprobe_path=None: {
+            "streams": [{"codec_type": "video", "nb_frames": "123"}],
+            "format": {},
+        },
+    )
+
+    assert video_frame_count("input.mp4") == 123
+
+
+def test_video_frame_count_falls_back_to_duration_times_fps(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "ascii_foundry.core.video_pipeline.ffprobe_metadata",
+        lambda path, ffprobe_path=None: {
+            "streams": [{"codec_type": "video", "duration": "10", "avg_frame_rate": "30000/1001"}],
+            "format": {},
+        },
+    )
+
+    assert video_frame_count("input.mp4") == 300
 
 
 def test_rebuild_video_command_shape(monkeypatch, tmp_path) -> None:
@@ -79,6 +128,24 @@ def test_rebuild_video_has_gif_command(monkeypatch, tmp_path) -> None:
     assert "palettegen" in " ".join(command)
     assert "-c:v" not in command
     assert str(tmp_path / "out.gif") == command[-1]
+
+
+def test_mux_audio_if_possible_writes_to_temp_then_replaces(monkeypatch, tmp_path) -> None:
+    silent = tmp_path / "silent.mp4"
+    output = tmp_path / "out.mp4"
+    silent.write_text("silent", encoding="utf-8")
+    output.write_text("old", encoding="utf-8")
+
+    def fake_run(command, progress_callback=None):
+        temp_output = command[-1]
+        assert temp_output != str(output)
+        assert str(silent) in command
+        tmp_path.joinpath(".out.with_audio.mp4").write_text("muxed", encoding="utf-8")
+
+    monkeypatch.setattr("ascii_foundry.core.video_pipeline.run_command", fake_run)
+
+    assert mux_audio_if_possible("input.mp4", silent, output)
+    assert output.read_text(encoding="utf-8") == "muxed"
 
 
 def test_find_ffmpeg_prefers_bundled_binary(monkeypatch, tmp_path) -> None:

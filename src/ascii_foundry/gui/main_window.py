@@ -4,7 +4,7 @@ from io import BytesIO
 from pathlib import Path
 import time
 
-from PySide6.QtCore import QSize, QThreadPool, QTimer, Qt
+from PySide6.QtCore import QSize, QThreadPool, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -157,6 +157,46 @@ class ScaledPreviewLabel(QLabel):
         painter.drawPixmap(x, y, scaled)
 
 
+class SliderSpinBox(QWidget):
+    valueChanged = Signal(int)
+
+    def __init__(self, minimum: int, maximum: int, value: int, tooltip: str) -> None:
+        super().__init__()
+        self.slider = QSlider(Qt.Orientation.Horizontal)
+        self.slider.setRange(minimum, maximum)
+        self.spin = QSpinBox()
+        self.spin.setRange(minimum, maximum)
+        self.spin.setFixedWidth(76)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.slider, stretch=1)
+        layout.addWidget(self.spin)
+        self.slider.valueChanged.connect(self._slider_changed)
+        self.spin.valueChanged.connect(self._spin_changed)
+        self.setToolTip(tooltip)
+        self.setValue(value)
+
+    def value(self) -> int:
+        return self.slider.value()
+
+    def setValue(self, value: int) -> None:
+        self.slider.setValue(value)
+
+    def setToolTip(self, tooltip: str) -> None:
+        super().setToolTip(tooltip)
+        self.slider.setToolTip(tooltip)
+        self.spin.setToolTip(tooltip)
+
+    def _slider_changed(self, value: int) -> None:
+        self.spin.blockSignals(True)
+        self.spin.setValue(value)
+        self.spin.blockSignals(False)
+        self.valueChanged.emit(value)
+
+    def _spin_changed(self, value: int) -> None:
+        self.slider.setValue(value)
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -182,6 +222,7 @@ class MainWindow(QMainWindow):
         self._updating_ramp_controls = False
         self._updating_video_controls = False
         self._last_logged_video_frame = 0
+        self._video_frame_timing: list[tuple[int, float]] = []
         self.video_started_at: float | None = None
 
         self.preview_timer = QTimer(self)
@@ -200,6 +241,7 @@ class MainWindow(QMainWindow):
         self.apply_text_export_preset("Plain TXT")
         self.apply_image_export_preset("PNG Auto Size")
         self.apply_video_export_preset("MP4 1080p Balanced")
+        self.update_source_actions()
 
     def _build_ui(self) -> None:
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -261,12 +303,14 @@ class MainWindow(QMainWindow):
         sample_form = QFormLayout()
         self.random_sample_check = QCheckBox("Random sample")
         self.random_sample_check.setChecked(True)
-        self.random_sample_check.setToolTip("When checked, choose a fresh random timestamp and ignore the seed field.")
-        self.sample_seed_edit = QLineEdit()
-        self.sample_seed_edit.setPlaceholderText("optional")
-        self.sample_seed_edit.setToolTip("When Random sample is off, this seed chooses a repeatable sample position.")
+        self.random_sample_check.toggled.connect(self.update_sample_frame_controls)
+        self.random_sample_check.setToolTip("When checked, choose a random source frame from the selected video.")
+        self.sample_frame_spin = QSpinBox()
+        self.sample_frame_spin.setRange(1, 1_000_000_000)
+        self.sample_frame_spin.setValue(1)
+        self.sample_frame_spin.setToolTip("When Random sample is off, preview this exact source frame number.")
         sample_form.addRow("", self.random_sample_check)
-        sample_form.addRow("Seed", self.sample_seed_edit)
+        sample_form.addRow("Frame #", self.sample_frame_spin)
         layout.addLayout(sample_form)
 
         preset_row = QHBoxLayout()
@@ -605,13 +649,20 @@ class MainWindow(QMainWindow):
             combo.addItem("Square 1080", (1080, 1080))
         combo.addItem("Custom", "custom")
 
-    def _slider(self, minimum: int, maximum: int, value: int, tooltip: str) -> QSlider:
-        slider = QSlider(Qt.Orientation.Horizontal)
-        slider.setRange(minimum, maximum)
-        slider.setValue(value)
+    def _slider(self, minimum: int, maximum: int, value: int, tooltip: str) -> SliderSpinBox:
+        slider = SliderSpinBox(minimum, maximum, value, tooltip)
         slider.valueChanged.connect(self.schedule_preview)
-        slider.setToolTip(tooltip)
         return slider
+
+    def update_source_actions(self) -> None:
+        has_video = self.video_path is not None
+        self.sample_frame_button.setEnabled(has_video)
+        self.update_sample_frame_controls()
+
+    def update_sample_frame_controls(self) -> None:
+        has_video = self.video_path is not None
+        self.random_sample_check.setEnabled(has_video)
+        self.sample_frame_spin.setEnabled(has_video and not self.random_sample_check.isChecked())
 
     def _load_user_ascii_presets(self) -> dict[str, Preset]:
         try:
@@ -684,6 +735,7 @@ class MainWindow(QMainWindow):
         self.input_label.setText(str(self.input_path))
         self.statusBar().showMessage(f"Loaded image: {self.input_path.name}")
         self.show_media_preview()
+        self.update_source_actions()
         self.refresh_preview()
 
     def open_video(self) -> None:
@@ -706,6 +758,7 @@ class MainWindow(QMainWindow):
         self.media_preview.clear_preview(f"Video selected:\n{self.video_path.name}")
         self.output_preview.clear_preview("Use Preview Sample Frame or start export to see rendered ASCII frames.")
         self.statusBar().showMessage(f"Loaded video: {self.video_path.name}")
+        self.update_source_actions()
 
     def load_youtube_video(self) -> None:
         url = self.youtube_url_edit.text().strip()
@@ -765,6 +818,7 @@ class MainWindow(QMainWindow):
         self.progress.setRange(0, 0)
         self.log.appendPlainText("Extracting sample frame...")
         self.statusBar().showMessage("Extracting sample frame...")
+        self.sample_frame_button.setEnabled(False)
         worker = SampleFrameWorker(
             self.video_path,
             AsciiSettings.from_dict(self.ascii_settings.to_dict()),
@@ -775,16 +829,17 @@ class MainWindow(QMainWindow):
                 output_height=video_settings.output_height,
             ),
             self.random_sample_check.isChecked(),
-            self.sample_seed(),
+            self.sample_frame_number(),
         )
         worker.signals.finished.connect(self.sample_frame_finished)
-        worker.signals.error.connect(self.export_failed)
+        worker.signals.error.connect(self.sample_frame_failed)
         self.thread_pool.start(worker)
 
     def sample_frame_finished(self, payload: object) -> None:
         self.progress.setRange(0, 100)
         self.progress.setValue(100)
         if not isinstance(payload, dict):
+            self.update_source_actions()
             return
         source_frame = Path(str(payload["source_frame"]))
         preview_frame = Path(str(payload["preview_frame"]))
@@ -793,15 +848,20 @@ class MainWindow(QMainWindow):
         self.show_output_preview_from_path(preview_frame)
         self.log.appendPlainText("Sample frame preview ready.")
         self.statusBar().showMessage("Sample frame preview ready")
+        self.update_source_actions()
 
-    def sample_seed(self) -> int | None:
-        value = self.sample_seed_edit.text().strip()
-        if not value:
+    def sample_frame_failed(self, message: str) -> None:
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self.log.appendPlainText(f"Error: {message}")
+        self.statusBar().showMessage(f"Error: {message}")
+        self.update_source_actions()
+        QMessageBox.warning(self, "Sample Frame Failed", message)
+
+    def sample_frame_number(self) -> int | None:
+        if self.random_sample_check.isChecked():
             return None
-        try:
-            return int(value)
-        except ValueError:
-            return sum(value.encode("utf-8"))
+        return self.sample_frame_spin.value()
 
     def show_media_preview(self) -> None:
         if not self.media_preview_pixmap:
@@ -1031,6 +1091,7 @@ class MainWindow(QMainWindow):
         if self.video_started_at is not None:
             self.statusBar().showMessage(f"Finished in {self._format_duration(time.monotonic() - self.video_started_at)}")
             self.video_started_at = None
+            self._video_frame_timing = []
         else:
             self.statusBar().showMessage(f"Finished: {output}")
 
@@ -1040,6 +1101,7 @@ class MainWindow(QMainWindow):
         self.log.appendPlainText(f"Error: {message}")
         self.statusBar().showMessage(f"Error: {message}")
         self.video_started_at = None
+        self._video_frame_timing = []
         QMessageBox.critical(self, "Export Failed", message)
 
     def export_video(self) -> None:
@@ -1075,6 +1137,7 @@ class MainWindow(QMainWindow):
         )
         self.progress.setRange(0, 0)
         self._last_logged_video_frame = 0
+        self._video_frame_timing = []
         self.video_started_at = time.monotonic()
         self.log.appendPlainText(f"Starting video export: {output_path}")
         self.statusBar().showMessage("Starting video export...")
@@ -1101,6 +1164,7 @@ class MainWindow(QMainWindow):
         if source_preview_path:
             self.show_media_preview_from_path(Path(str(source_preview_path)))
         if stage == "convert" and isinstance(current, int):
+            self._record_video_frame_timing(current)
             if current == 1 or current == total or current - self._last_logged_video_frame >= 10:
                 self._last_logged_video_frame = current
                 suffix = f"/{total}" if total else ""
@@ -1329,6 +1393,28 @@ class MainWindow(QMainWindow):
         pixmap.loadFromData(buffer.getvalue(), "PNG")
         return pixmap
 
+    def _record_video_frame_timing(self, frame_number: int) -> None:
+        now = time.monotonic()
+        if self._video_frame_timing and frame_number <= self._video_frame_timing[-1][0]:
+            if frame_number < self._video_frame_timing[-1][0]:
+                self._video_frame_timing = []
+            else:
+                return
+        self._video_frame_timing.append((frame_number, now))
+        self._video_frame_timing = self._video_frame_timing[-21:]
+
+    def _recent_frame_eta(self, current: int | float | None, total: int | float | None) -> float | None:
+        if not isinstance(current, int) or not isinstance(total, int) or len(self._video_frame_timing) < 2:
+            return None
+        first_frame, first_time = self._video_frame_timing[0]
+        last_frame, last_time = self._video_frame_timing[-1]
+        frame_delta = last_frame - first_frame
+        time_delta = last_time - first_time
+        if frame_delta <= 0 or time_delta <= 0:
+            return None
+        seconds_per_frame = time_delta / frame_delta
+        return max(0.0, (total - current) * seconds_per_frame)
+
     def _update_video_status(self, stage: str, current: int | float | None, total: int | float | None) -> None:
         if self.video_started_at is None:
             self.statusBar().showMessage(stage)
@@ -1336,13 +1422,13 @@ class MainWindow(QMainWindow):
         elapsed = time.monotonic() - self.video_started_at
         parts = [stage, f"elapsed {self._format_duration(elapsed)}"]
         if current and total:
-            rate = elapsed / current
-            eta = max(0.0, (total - current) * rate)
             if stage.startswith("extract"):
                 parts.append(f"{current:.1f}/{total:.1f}s")
             else:
                 parts.append(f"frame {int(current)}/{int(total)}")
-            parts.append(f"ETA {self._format_duration(eta)}")
+            eta = self._recent_frame_eta(current, total) if stage == "convert" else None
+            if eta is not None:
+                parts.append(f"ETA {self._format_duration(eta)}")
         self.statusBar().showMessage(" | ".join(parts))
 
     def _format_duration(self, seconds: float) -> str:

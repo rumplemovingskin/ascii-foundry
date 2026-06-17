@@ -45,14 +45,28 @@ def ffprobe_metadata(input_video: str | Path, ffprobe_path: str | None = None) -
         "-show_streams",
         str(input_video),
     ]
-    result = subprocess.run(command, capture_output=True, text=True, check=True)
+    result = subprocess.run(command, capture_output=True, text=True, check=True, **subprocess_startup_options())
     return json.loads(result.stdout)
 
 
 def run_command(command: list[str], progress_callback: Any | None = None) -> None:
     if progress_callback:
         progress_callback({"stage": "command", "command": command})
-    subprocess.run(command, check=True)
+    subprocess.run(command, check=True, **subprocess_startup_options())
+
+
+def subprocess_startup_options() -> dict[str, Any]:
+    if not sys.platform.startswith("win"):
+        return {}
+    options: dict[str, Any] = {}
+    if hasattr(subprocess, "CREATE_NO_WINDOW"):
+        options["creationflags"] = subprocess.CREATE_NO_WINDOW
+    if hasattr(subprocess, "STARTUPINFO"):
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+        options["startupinfo"] = startupinfo
+    return options
 
 
 def _find_bundled_binary(name: str) -> str | None:

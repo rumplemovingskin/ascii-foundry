@@ -12,7 +12,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
 
-from ascii_foundry.core.ffmpeg_tools import ffprobe_metadata, find_ffmpeg, require_ffmpeg, run_command
+from ascii_foundry.core.ffmpeg_tools import (
+    ffprobe_metadata,
+    find_ffmpeg,
+    require_ffmpeg,
+    run_command,
+    subprocess_startup_options,
+)
 from ascii_foundry.core.render_image import render_image_to_ascii_image
 from ascii_foundry.core.settings import AsciiSettings, ImageExportSettings, RenderSettings, VideoSettings
 from ascii_foundry.utils.paths import cache_dir
@@ -90,24 +96,28 @@ def run_video_ascii_job(job: VideoAsciiJob, progress_callback: ProgressCallback 
             _clear_png_frames(ascii_dir)
             _convert_frames(frames, ascii_dir, ascii_settings, render_settings, video_settings, progress_callback)
             _mark_stage_complete(ascii_dir, "converted")
+        copy_audio = video_settings.copy_audio and video_settings.output_format != "gif"
+        silent_video = workdir / f"silent_video{output_video.suffix}" if copy_audio else output_video
         _emit(progress_callback, stage="rebuild", current=0, total=len(frames), percent=90)
         rebuild_video(
             ascii_dir,
-            output_video,
+            silent_video,
             fps,
             video_settings,
             availability.ffmpeg_path or "ffmpeg",
             progress_callback,
         )
 
-        if video_settings.copy_audio and video_settings.output_format != "gif":
-            mux_audio_if_possible(
+        if copy_audio:
+            muxed = mux_audio_if_possible(
                 input_video=job.input_video,
-                silent_video=output_video,
+                silent_video=silent_video,
                 output_video=output_video,
                 ffmpeg_path=availability.ffmpeg_path or "ffmpeg",
                 progress_callback=progress_callback,
             )
+            if not muxed:
+                shutil.copy2(silent_video, output_video)
 
         if job.frame_output_dir and not video_settings.keep_intermediate_frames:
             _emit(progress_callback, stage="frames-kept", current=len(frames), total=len(frames), percent=100)
@@ -165,7 +175,7 @@ def extract_sample_frame(
     input_video: str | Path,
     output_path: str | Path,
     random_frame: bool = True,
-    seed: int | None = None,
+    frame_number: int | None = None,
     ffmpeg_path: str | None = None,
     ffprobe_path: str | None = None,
     progress_callback: ProgressCallback | None = None,
@@ -173,14 +183,17 @@ def extract_sample_frame(
     availability = require_ffmpeg(find_ffmpeg(ffmpeg_path, ffprobe_path))
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    timestamp = choose_sample_timestamp(input_video, random_frame, seed, ffprobe_path)
+    selected_frame, _ = choose_sample_frame_number(input_video, random_frame, frame_number, ffprobe_path)
+    frame_index = selected_frame - 1
     command = [
         availability.ffmpeg_path or "ffmpeg",
         "-y",
         "-i",
         str(input_video),
-        "-ss",
-        f"{timestamp:.3f}",
+        "-vf",
+        f"select=eq(n\\,{frame_index})",
+        "-vsync",
+        "0",
         "-frames:v",
         "1",
         "-update",
@@ -191,6 +204,25 @@ def extract_sample_frame(
     if not output.exists():
         raise RuntimeError("FFmpeg did not create a sample frame.")
     return output
+
+
+def choose_sample_frame_number(
+    input_video: str | Path,
+    random_frame: bool = True,
+    frame_number: int | None = None,
+    ffprobe_path: str | None = None,
+) -> tuple[int, int]:
+    total_frames = video_frame_count(input_video, ffprobe_path)
+    if total_frames < 1:
+        raise RuntimeError("Could not determine the number of frames in this video.")
+    if random_frame:
+        return random.randint(1, total_frames), total_frames
+    selected_frame = frame_number or 1
+    if selected_frame < 1:
+        selected_frame = 1
+    if selected_frame > total_frames:
+        raise ValueError(f"Frame {selected_frame} is outside this video. Total frames: {total_frames}.")
+    return selected_frame, total_frames
 
 
 def choose_sample_timestamp(
@@ -221,6 +253,25 @@ def video_duration_seconds(input_video: str | Path, ffprobe_path: str | None = N
         return float(duration)
     except (TypeError, ValueError):
         return 0.0
+
+
+def video_frame_count(input_video: str | Path, ffprobe_path: str | None = None) -> int:
+    try:
+        metadata = ffprobe_metadata(input_video, ffprobe_path)
+    except Exception:
+        return 0
+    format_duration = _float_or_zero(metadata.get("format", {}).get("duration"))
+    for stream in metadata.get("streams", []):
+        if stream.get("codec_type") != "video":
+            continue
+        frame_count = _int_or_zero(stream.get("nb_frames"))
+        if frame_count:
+            return frame_count
+        duration = _float_or_zero(stream.get("duration")) or format_duration
+        fps = _parse_fps(stream.get("avg_frame_rate") or stream.get("r_frame_rate"))
+        if duration and fps:
+            return max(1, round(duration * fps))
+    return 0
 
 
 def _sample_seek_margin(duration: float) -> float:
@@ -285,9 +336,10 @@ def mux_audio_if_possible(
     output_video: str | Path,
     ffmpeg_path: str = "ffmpeg",
     progress_callback: ProgressCallback | None = None,
-) -> None:
+) -> bool:
     output = Path(output_video)
-    temp_output = output.with_name(f"{output.stem}.with_audio{output.suffix}")
+    temp_output = output.with_name(f".{output.stem}.with_audio{output.suffix}")
+    temp_output.unlink(missing_ok=True)
     command = [
         ffmpeg_path,
         "-y",
@@ -310,8 +362,10 @@ def mux_audio_if_possible(
         run_command(command, progress_callback)
     except Exception:
         temp_output.unlink(missing_ok=True)
-        return
+        return False
+    output.unlink(missing_ok=True)
     temp_output.replace(output)
+    return True
 
 
 def iter_supported_images(path: str | Path) -> Iterable[Path]:
@@ -369,6 +423,22 @@ def _parse_fps(value: str | None) -> float | None:
     return fps if fps > 0 else None
 
 
+def _int_or_zero(value: object) -> int:
+    try:
+        result = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return result if result > 0 else 0
+
+
+def _float_or_zero(value: object) -> float:
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return result if result > 0 else 0.0
+
+
 def _emit(callback: ProgressCallback | None, **payload: object) -> None:
     if callback:
         callback(payload)
@@ -390,6 +460,7 @@ def run_ffmpeg_with_progress(
         text=True,
         encoding="utf-8",
         errors="replace",
+        **subprocess_startup_options(),
     )
     assert process.stdout is not None
     last_percent = start_percent
