@@ -21,9 +21,14 @@ look better once they have been fed through a wall of characters.
 - Exports text, HTML, PNG, JPG, WebP, BMP, MP4, WebM, and GIF.
 - Supports high-resolution rendered outputs, including 4K video.
 
-## Screenshots
+## Screenshots / Sample Outputs
 
-Screenshots will go here.
+<img width="1920" height="1032" alt="vader" src="https://github.com/user-attachments/assets/50e360a0-1a4e-46ac-b294-3ccbb4a866a9" />
+<img width="1920" height="1032" alt="matrix" src="https://github.com/user-attachments/assets/8cf736cf-793e-41b4-8f6c-0f11ae3c1c5f" />
+<img width="1920" height="1032" alt="spiderman" src="https://github.com/user-attachments/assets/09c3e23a-0989-4194-ac78-44d75d5cc184" />
+
+
+
 
 ## Why Use It
 
